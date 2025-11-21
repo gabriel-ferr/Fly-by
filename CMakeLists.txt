@@ -3,4 +3,4 @@ project(fly_by C)
 
 set(CMAKE_C_STANDARD 11)
 
-add_executable(fly_by main.c)
+add_executable(fly_by fly_by.c)
