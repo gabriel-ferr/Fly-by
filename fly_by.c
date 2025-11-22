@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <time.h>
 // ....................................................................................................................
 //      Constantes da simulação:
 //  → Definições gerais.
@@ -23,12 +24,12 @@
 
 #define NUMERO_DE_TESTES 60                             //  Número de testes balísticos que serão realizados na simulação
 
-#define STEPS_PARA_OUTPUT 900                           //  Número de "passos de integração" para que o programa exporte
-                                                        //  um registro de saída. Sendo, por exemplo, dt = 0,2s, isso
+#define STEPS_PARA_OUTPUT 3600                          //  Número de "passos de integração" para que o programa exporte
+                                                        //  um registro de saída. Sendo, por exemplo, dt = 0,05s, isso
                                                         //  resultaria num ponto a cada 180s (3 minutos) no arquivo
                                                         //  de saída.
 
-#define DELTA_TIME 0.2                                  //  Step de integração numérica. (Em segundos)
+#define DELTA_TIME 0.05                                 //  Step de integração numérica. (Em segundos)
 
 #define TIME_FINAL 6.912e5                              //  Tempo máximo de integração. (Em segundos)
                                                         //  O valor de 6.912e5 segundos dá aproximadamente 8 dias.
@@ -40,6 +41,7 @@
 
 //  → Condições iniciais fixas
 #define DISTANCIA_MARTE_SOL 2.2794e11                   //  Distância radial entre Marte e o Sol. (Em metros)
+#define RAIO_MARTE 3.3895E6                             //  Raio do planeta Marte. (Em metros)
 #define OFFSET_DA_SONDA 5e7                             //  Deslocamente entre a distância radial entre Marte e o Sol e
                                                         //  a posição mínima e máxima radial da sonda. (Em metros)
 
@@ -58,6 +60,10 @@
 //
 //  * Os valores passados como "referência" são saídas da função simulate alterados em espaços de memória pré-alocados.
 void simulate(int test, double pos_ship_init, double* d_min_value, double* b_min_value, double* delta_v_value, double* deflection_angle_value);
+
+//  - Isso aqui é só uma função extra para converter o tempo de ETA de segundos para um formato "melhor"
+//  Pode ignorar =D
+void format_time(double seconds, char *buffer);
 // ....................................................................................................................
 //      Alocação global de memória:
 char test_name[100];                                //  Nome da pasta onde os dados temporais serão salvos.
@@ -96,6 +102,12 @@ int main(const int argc, const char *argv[]) {
     double max_pos_ship_init;                           // [m]          - Valor máximo para a posição radial inicial da sonda.
     double pos_init_step;                               // [m]          - "Passo" entre os valores max e min.
     double progress;                                    //              - Contador de progresso.
+    double elapsed;                                     //              - Tempo decorrido da simulação.
+    double total_time;                                  //              - Tempo estimado total de simulação.
+    double remaining;                                   //              - Tempo restante de simulação.
+    clock_t begin;                                      //              - Momento em que o processo começou.
+    char elapsed_str[50];                               //                  - “String” com o tempo atual de processamento.
+    char remaining_str[50];                             //                  - "String" com o tempo restante de processamento.
 
     char filename[200];                                 //              - Nome do arquivo onde os dados globais serão salvos.
     FILE *fo;                                           //              - Ponteiro para o arquivo onde os dados serão salvos.
@@ -145,23 +157,35 @@ int main(const int argc, const char *argv[]) {
     // ................................................................................................................
     //      Chama a função responsável pelas simulações numéricas de cada teste
     printf("\nRealizando simulações ... \n");
+    begin = clock();
     for (i = 0; i < NUMERO_DE_TESTES; i++) {
         progress = (1.0 * i / NUMERO_DE_TESTES) * 100;
 
         simulate(i, pos_ship_init[i],
         &d_values[i], &b_values[i], &var_velocidade[i], &deflection_angle[i]);
 
-        //      Barrinha de progresso =D
+        //      Barrinha de progresso (modo avançado com ETA) =D
+        elapsed = (double) (clock() - begin) / CLOCKS_PER_SEC;
+        total_time = (elapsed / (i > 0 ? i : 1)) * NUMERO_DE_TESTES;
+        remaining = total_time - elapsed;
+
+        format_time(elapsed, elapsed_str);
+        format_time(remaining, remaining_str);
+
+        printf("\r");
+        for (j = 0; j < NUMERO_DE_TESTES + 120; j++) printf(" ");
+        fflush(stdout);
+
         printf("\r[");
         for (j = 0; j < NUMERO_DE_TESTES; j++) printf(j < i ? "#" : " ");
-        printf("] %.2lf%%", progress);
+        printf("] %.2lf%%, Elapsed: %s, ETA: %s", progress, elapsed_str, remaining_str);
 
         fflush(stdout);     //  Força a impressão =V
     }
 
     printf("\r[");
     for (i = 0; i < NUMERO_DE_TESTES; i++) printf("#");
-    printf("] 100.00%%");
+    printf("] 100.00%%, Total time: %s", elapsed_str);
     fflush(stdout);
     printf("\n\n");
     // ................................................................................................................
@@ -172,10 +196,10 @@ int main(const int argc, const char *argv[]) {
     fo = fopen(filename, "w");
 
     //  - Cabeçalho do arquivo CSV.
-    fprintf(fo, "i,pos_init,d_min,b_min,delta_v,deflection_angle\n");
+    fprintf(fo, "i,pos_init,d_min,b_min,delta_v,deflection_angle,collision\n");
     for (i = 0; i < NUMERO_DE_TESTES; i++) {
-        fprintf(fo, "%d,%.15e,%.15e,%.15e,%.15e,%.15e\n",
-            i + 1, pos_ship_init[i], d_values[i], b_values[i], var_velocidade[i], deflection_angle[i]);
+        fprintf(fo, "%d,%.15e,%.15e,%.15e,%.15e,%.15e,%d\n",
+            i + 1, pos_ship_init[i], d_values[i], b_values[i], var_velocidade[i], deflection_angle[i], d_values[i] <= RAIO_MARTE ? 1 : 0);
     }
 
     fclose(fo);
@@ -257,16 +281,16 @@ void simulate(
     ship_coord_cartesian[1] = ship_coord_polar[1] * cos(ship_coord_polar[2]);
     ship_coord_cartesian[2] = ship_coord_polar[1] * sin(ship_coord_polar[2]);
     //  - Velocidade de Marte (x e y, em ordem)
-    mars_velocity_cartesian[1] = mars_velocity_polar[1] * cos(mars_coord_polar[2]) - mars_velocity_polar[2] * sin(mars_coord_polar[2]);
-    mars_velocity_cartesian[2] = mars_velocity_polar[1] * sin(mars_coord_polar[2]) + mars_velocity_polar[2] * cos(mars_coord_polar[2]);
+    mars_velocity_cartesian[1] = mars_velocity_polar[1] * cos(mars_coord_polar[2]) - mars_coord_polar[1] * mars_velocity_polar[2] * sin(mars_coord_polar[2]);
+    mars_velocity_cartesian[2] = mars_velocity_polar[1] * sin(mars_coord_polar[2]) + mars_coord_polar[1] * mars_velocity_polar[2] * cos(mars_coord_polar[2]);
     //  - Velocidade da sonda (x e y, em ordem)
-    ship_velocity_cartesian[1] = ship_velocity_polar[1] * cos(ship_coord_polar[2]) - ship_velocity_polar[2] * sin(ship_coord_polar[2]);
-    ship_velocity_cartesian[2] = ship_velocity_polar[1] * sin(ship_coord_polar[2]) + ship_velocity_polar[2] * cos(ship_coord_polar[2]);
+    ship_velocity_cartesian[1] = ship_velocity_polar[1] * cos(ship_coord_polar[2]) - ship_coord_polar[1] * ship_velocity_polar[2] * sin(ship_coord_polar[2]);
+    ship_velocity_cartesian[2] = ship_velocity_polar[1] * sin(ship_coord_polar[2]) + ship_coord_polar[1] * ship_velocity_polar[2] * cos(ship_coord_polar[2]);
 
     //      Calcula a distância relativa e o parâmetro de impacto iniciais.
     //  Isso é uma conta gigante, mas representa o valor de |\vec d| apresentado no trabalho escrito; e também da Eq.(33).
     relative_distance = sqrt(ship_coord_polar[1] * ship_coord_polar[1] + mars_coord_polar[1] * mars_coord_polar[1] - 2 * ship_coord_polar[1] * mars_coord_polar[1] * cos(ship_coord_polar[2] - mars_coord_polar[2]));
-    impact_parameter = ((ship_coord_cartesian[1] - mars_coord_cartesian[1]) * (ship_velocity_cartesian[2] - mars_velocity_cartesian[2]) - (ship_coord_cartesian[2] - mars_coord_cartesian[2]) * (ship_velocity_cartesian[1] - mars_velocity_cartesian[1])) /
+    impact_parameter = fabs((ship_coord_cartesian[1] - mars_coord_cartesian[1]) * (ship_velocity_cartesian[2] - mars_velocity_cartesian[2]) - (ship_coord_cartesian[2] - mars_coord_cartesian[2]) * (ship_velocity_cartesian[1] - mars_velocity_cartesian[1])) /
         sqrt((ship_velocity_cartesian[1] - mars_velocity_cartesian[1]) * (ship_velocity_cartesian[1] - mars_velocity_cartesian[1]) + (ship_velocity_cartesian[2] - mars_velocity_cartesian[2]) * (ship_velocity_cartesian[2] - mars_velocity_cartesian[2]));
 
     *d_min_value = relative_distance;
@@ -330,16 +354,16 @@ void simulate(
         ship_coord_cartesian[1] = ship_coord_polar[1] * cos(ship_coord_polar[2]);
         ship_coord_cartesian[2] = ship_coord_polar[1] * sin(ship_coord_polar[2]);
         //  - Velocidade de Marte (x e y, em ordem)
-        mars_velocity_cartesian[1] = mars_velocity_polar[1] * cos(mars_coord_polar[2]) - mars_velocity_polar[2] * sin(mars_coord_polar[2]);
-        mars_velocity_cartesian[2] = mars_velocity_polar[1] * sin(mars_coord_polar[2]) + mars_velocity_polar[2] * cos(mars_coord_polar[2]);
+        mars_velocity_cartesian[1] = mars_velocity_polar[1] * cos(mars_coord_polar[2]) - mars_coord_polar[1] * mars_velocity_polar[2] * sin(mars_coord_polar[2]);
+        mars_velocity_cartesian[2] = mars_velocity_polar[1] * sin(mars_coord_polar[2]) + mars_coord_polar[1] * mars_velocity_polar[2] * cos(mars_coord_polar[2]);
         //  - Velocidade da sonda (x e y, em ordem)
-        ship_velocity_cartesian[1] = ship_velocity_polar[1] * cos(ship_coord_polar[2]) - ship_velocity_polar[2] * sin(ship_coord_polar[2]);
-        ship_velocity_cartesian[2] = ship_velocity_polar[1] * sin(ship_coord_polar[2]) + ship_velocity_polar[2] * cos(ship_coord_polar[2]);
+        ship_velocity_cartesian[1] = ship_velocity_polar[1] * cos(ship_coord_polar[2]) - ship_coord_polar[1] * ship_velocity_polar[2] * sin(ship_coord_polar[2]);
+        ship_velocity_cartesian[2] = ship_velocity_polar[1] * sin(ship_coord_polar[2]) + ship_coord_polar[1] * ship_velocity_polar[2] * cos(ship_coord_polar[2]);
 
         //      Calcula a distância relativa e o parâmetro de impacto iniciais.
         //  Isso é uma conta gigante, mas representa o valor de |\vec d| apresentado no trabalho escrito; e também da Eq.(33).
         relative_distance = sqrt(ship_coord_polar[1] * ship_coord_polar[1] + mars_coord_polar[1] * mars_coord_polar[1] - 2 * ship_coord_polar[1] * mars_coord_polar[1] * cos(ship_coord_polar[2] - mars_coord_polar[2]));
-        impact_parameter = ((ship_coord_cartesian[1] - mars_coord_cartesian[1]) * (ship_velocity_cartesian[2] - mars_velocity_cartesian[2]) - (ship_coord_cartesian[2] - mars_coord_cartesian[2]) * (ship_velocity_cartesian[1] - mars_velocity_cartesian[1])) /
+        impact_parameter = fabs((ship_coord_cartesian[1] - mars_coord_cartesian[1]) * (ship_velocity_cartesian[2] - mars_velocity_cartesian[2]) - (ship_coord_cartesian[2] - mars_coord_cartesian[2]) * (ship_velocity_cartesian[1] - mars_velocity_cartesian[1])) /
             sqrt((ship_velocity_cartesian[1] - mars_velocity_cartesian[1]) * (ship_velocity_cartesian[1] - mars_velocity_cartesian[1]) + (ship_velocity_cartesian[2] - mars_velocity_cartesian[2]) * (ship_velocity_cartesian[2] - mars_velocity_cartesian[2]));
 
         if (relative_distance < *d_min_value) *d_min_value = relative_distance;
@@ -368,3 +392,25 @@ void simulate(
     *deflection_angle_value = acos(*deflection_angle_value);
     // ................................................................................................................
 }
+// ....................................................................................................................
+//      ** Função para mostrar o tempo no ETA em segundos, minutos, etc.
+//  Pode ignorar isso aqui; não dei muita atenção em manter organizado também...
+void format_time(double seconds, char *buffer) {
+    const int sec = (int) seconds;
+    if (sec < 60) {
+        sprintf(buffer, "%d segundos", sec);
+    } else if (sec < 3600) {
+        const int m = sec / 60;
+        const int s = sec % 60;
+        sprintf(buffer, "%d minutos e %d segundos", m, s);
+    } else if (sec < 86400) {
+        const int h = sec / 3600;
+        const int m = sec % 3600;
+        sprintf(buffer, "%d horas e %d minutos", h, m);
+    } else {
+        const int d = sec / 86400;
+        const int h = sec % 86400;
+        sprintf(buffer, "%d dias e %d minutos", d, h);
+    }
+}
+// ....................................................................................................................
