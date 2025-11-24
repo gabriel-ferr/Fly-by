@@ -52,8 +52,27 @@ Para as simulações apresentadas no relatório da matéria de Simulação em F�
  ./fly_by simul 50 2600 -10 10 1e10 0.001
 ```
 
-De maneria que os dados da simulação foram salvos na pasta `simul`. Uma execução bem sucedida vai resultar em uma saída como da imagem abaixo.
-![Resultado simulação](docs/figure_1.png)
+De maneria que os dados da simulação foram salvos na pasta `simul`. Uma execução bem sucedida vai resultar em uma saída como abaixo:
+```shell
+./fly_by simul 50 2600 -10 10 1e10 0.001
+Rodando o teste...
+Condições iniciais definidas: 
+         Raio de Marte utilizado: 3.3895e+06 metros 
+         Massa de Marte utilizada: 6.4171e+23 metros 
+         Valor de x(0): -1.6948e+08 metros
+         Valor de y(0) pertencente ao intervalo [-3.3895e+07 m; 3.3895e+07 m], com passo igual a 2.8364e+05 metros
+         Valor de vx(0): 2.6954e+03 metros por segundo
+         Valor de vy(0): 0.0000e+00 metros por segundo
+         Tempo máximo de integração: 1.0000e+10 segundos
+         Passo de integração: 0.0010 s
+Os dados serão salvos na pasta: 'simul'
+
+Realizando simulações ... 
+[####################################################################################################] 100.00%, Total time: 5 minutos e 11 segundos                                                           
+
+Salvando os dados globais em: 'simul/global.csv'
+Simulação concluída =D
+```
 
 ## Gráficos
 Tendo os dados da simulação, é possível obter os gráficos ao rodar o código
@@ -62,8 +81,18 @@ julia graphics.jl
 ```
 
 Com os devidos pacotes instalados pelo script `install.jl`, o `graphics.jl` vai montar os gráficos da simulação, 
-salvando eles na pasta `<test_name>/results/`. A imagem abaixo exemplifica a execução do código.
-![Geração de gráficos](docs/figure_2.png)
+salvando eles na pasta `<test_name>/results/`. Abaixo tem um exemplo do output do script.
+```shell
+julia graphics.jl
+Executando script gráficos em '/Users/gabrielferreira/Fly-by' ...
+Por favor, selecione um desses seguintes projetos para iniciar o processamento:
+        [1]      - Project: simul
+Identificador do projeto: 1
+Por favor, insira a velocidade no infinito (em m/s): 2600
+Inicializando processamento dos dados globais do projeto 'simul' ...
+Inicializando processamento das trajetórias do projeto 'simul' ...
+Progress: 100%|████████████████████████████████████████████████████████████| Time: 0:00:21
+```
 
 Com isso, serão geradas as figuras apresentadas no arquivo `relatorio.pdf`, além de uma sequência de snapshots das trajetórias,
 que são salvos em `<test_name>/results/snapshots`.
