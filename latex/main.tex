@@ -1,0 +1,839 @@
+\documentclass{article}
+\usepackage{tikz}
+\usepackage[utf8]{inputenc}
+\usepackage{csquotes}
+\usepackage[portuguese]{babel}
+\usepackage{graphicx}
+\usepackage[T1]{fontenc}
+\usepackage{mathptmx}
+\usepackage{etoolbox}
+\usepackage{url}
+\usepackage{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathrsfs}
+\usepackage{mathtools}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{indentfirst}
+\usepackage[backend=biber,style=numeric,sorting=none]{biblatex}
+%% --------------------------------------------------------------------------
+\definecolor{codegray}{rgb}{0.4,0.4,0.4}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backgray}{rgb}{0.95,0.95,0.95}
+%% --------------------------------------------------------------------------
+\lstdefinestyle{cstyle}{
+    language=C,
+    backgroundcolor=\color{white},
+    basicstyle=\ttfamily\footnotesize,
+    keywordstyle=\color{blue},
+    commentstyle=\color{codegray},
+    stringstyle=\color{codepurple},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    stepnumber=1,
+    numbersep=8pt,
+    tabsize=4,
+    showspaces=false,
+    showstringspaces=false,
+    breaklines=true,
+    frame=single,
+    captionpos=b
+}
+
+\lstset{style=cstyle}
+%% --------------------------------------------------------------------------
+\usetikzlibrary{quotes, angles}
+%% --------------------------------------------------------------------------
+\addbibresource{references.bib}
+%% --------------------------------------------------------------------------
+\title{Relatório de simulação da manobra orbital \textit{fly-by}}
+\author{Gabriel Vinicius Ferreira}
+\date{\today}
+%% --------------------------------------------------------------------------
+\newgeometry{top=3cm, bottom=3cm, left=3cm, right=2.1cm}
+%% --------------------------------------------------------------------------
+\begin{document}
+\maketitle
+%% --------------------------------------------------------------------------
+\section{Introdução}
+    Neste relatório, apresentado para a disciplina de Simulação Computacional em Física (CF1829, 2-2025), abordamos a simulação da manobra orbital \textit{fly-by} — também conhecida como assistência gravitacional. Essa técnica é utilizada por sondas espaciais para alterar sua velocidade e trajetória aproveitando a gravidade de um corpo celeste~\cite{berg2023}. Em termos simples, funciona como uma ``carona gravitacional'': ao interagir com o campo gravitacional do corpo massivo, a nave consegue modificar sua velocidade sem gastar combustível. Como o transporte de propelente no espaço é limitado e custoso, manobras desse tipo são estratégicas e amplamente usadas em missões de longa duração. Entre as missões que empregaram assistência gravitacional estão as sondas \textit{Voyager}, \textit{Parker Solar Probe}, \textit{Solar Orbiter}, \textit{MESSENGER}, \textit{Psyche} e \textit{BepiColombo}~\cite{nasa}.
+
+    Para este trabalho utilizamos duas simulações de \textit{fly-by}: uma baseada no problema restrito de dois corpos e outra no problema restrito de três corpos. Em ambos os casos, consideramos apenas a força gravitacional, dada por~\cite{marion2004}
+%
+    \begin{equation}\label{eq:f_grav}
+        \vec F(\vec r)=-\frac{GM m}{|\vec r|^3}~\vec r,
+    \end{equation}
+%
+    onde $M$ é a massa do corpo que gera o campo gravitacional, $m$ é a massa do objeto que sofre a ação da gravidade, $\vec r$ é o vetor distância entre eles e $G$ é a constante gravitacional universal ($G\approx6,6743\times 10^{-11}~m^3kg^{-1}s^{-2}$). Para as simulações apresentadas aqui, tomamos como corpos massivos Marte, com massa $M_M \approx6,4171\times 10^{23}~kg$, e o Sol, com massa $M_\odot\approx1,9885\times10^{30}~kg$.
+
+    \begin{figure}[th]
+        \centering
+        \begin{tikzpicture}
+            \draw[->, thick] (0,-1.2) -- (0,2.8);
+            \node at (-0.3,2.8) {$y$};
+            \draw[->, thick] (-3.1,0) -- (3.1,0);
+            \node at (3.1, -0.3) {$x$};
+            \fill[black] (0,0) circle (0.1cm);
+            \node at (0.4,-0.32) {$M_M$};
+            \fill[black] (-2.5,1.8) circle (0.05cm);
+            \node at (-2.5,2.1) {$m$};
+            \draw[->, thick] (0,0) -- (-2.46,1.76);
+            \node at (-1.6,0.8) {$\vec r$};
+            \draw[->, thick] (-2.5, 1.8) -- (-1.8, 1.8);
+            \node at (-1.4, 1.6) {$\vec v_\infty$};
+        \end{tikzpicture}
+        \caption{Representação do problema restrito de dois corpos. Marte é indicado pelo corpo de massa $M_M$ e a sonda pelo corpo de massa $m$. A distância entre eles é dada pelo vetor $\vec r$. Para simplificar o cenário, a sonda se aproxima a partir de $x=-\infty$ com velocidade $\vec v_\infty$, que possui apenas componente positiva em $x$. A simulação descreve a interação dessa sonda com o campo gravitacional gerado por $M_M$.}
+        \label{fig:problem_draw_2b}
+    \end{figure}
+
+    O problema restrito de dois corpos, ilustrado na Figura~\ref{fig:problem_draw_2b}, considera um corpo massivo de massa $M$ fixo no centro do sistema de coordenadas e um corpo de teste de massa $m$ aproximando-se com certa velocidade. Tratar $M_M$ como fixo é, até certo ponto, equivalente a descrever o movimento relativo do corpo $m$ no referencial de $M_M$. A interação entre eles é simples: o corpo de teste responde ao campo gravitacional descrito pela Eq.~(\ref{eq:f_grav}), mas não exerce influência apreciável sobre o corpo massivo — daí o termo “restrito” no nome do modelo.
+
+    Nesse cenário, o \textit{fly-by} resulta em uma trajetória hiperbólica que pode ser analisada geometricamente, conforme discutido em~\cite{curtis2014}. Apesar de fisicamente limitado — já que desconsidera a presença do Sol e o movimento orbital de Marte, no contexto deste trabalho —, a própria simplicidade do modelo, aliada à sua descrição analítica, torna o \textit{fly-by} no regime de dois corpos uma ferramenta útil no ensino de física orbital e da simulação computacional em física.
+    
+
+    \begin{figure}[th]
+        \centering
+        \begin{tikzpicture}
+            \draw[->, thick] (0,0) -- (0,3.1);
+            \node at (-0.3,3.1) {$y$};
+            \draw[->, thick] (0,0) -- (3.1,0);
+            \node at (3.1, -0.3) {$x$};
+            \fill[black] (0,0) circle (0.05cm);
+            \node at (0.1,-0.35) {$M_\odot$};
+            \fill[black] (2.0, 2.0) circle (0.05cm);
+            \node at (2.4, 1.9) {$m$};
+            \draw[->, thick] (0,0) -- (1.96,1.96);
+            \node at (1.28, 0.9) {$\vec r_s$};
+            \fill[black] (1.4, 2.6) circle (0.05cm);
+            \node at (1.4, 2.8) {$M_M$};
+            \draw[->, thick] (1.42, 2.58) -- (2.0, 2.0);
+            \node at (1.85, 2.45) {$\vec d$};
+            \draw[->, thick] (0,0) -- (1.38, 2.58);
+            \node at (0.55, 1.55) {$\vec r_M$};
+        \end{tikzpicture}
+        \caption{Representação do problema de três corpos. O objeto de massa $m$ corresponde à sonda, $M_M$ representa Marte e $M_\odot$o Sol. As distâncias entre esses corpos são dadas pelos vetores $\vec d$, $\vec r_s$ e $\vec r_M$, como indicado na figura.}
+        \label{fig:problem_draw_3b}
+    \end{figure}
+
+   O problema restrito de três corpos é semelhante ao caso de dois corpos, como mostrado na Figura~\ref{fig:problem_draw_3b}. Aqui, o Sol é colocado na origem do sistema de coordenadas e dois corpos se movem sob sua influência gravitacional sem afetar sua posição. Além disso, assumimos que, embora Marte seja afetado pelo Sol, ele não sofre influência da sonda, mantendo o caráter ``restrito'' do modelo.
+    
+    A formulação desse problema é mais elaborada e demanda o uso do formalismo lagrangiano. Definimos a Lagrangiana do sistema como~\cite{marion2004}
+%
+    \begin{equation}\label{eq:def_lag}
+        \mathcal{L} = T - V,
+    \end{equation}
+%
+    em que $T$ é a energia cinética e $V$ é a energia potencial. A partir dessa definição, as equações de movimento são obtidas por meio da equação de Euler–Lagrange~\cite{marion2004}:
+%
+    \begin{equation}\label{eq:euler-lag}
+        \frac{\text d}{\text d t}\left(\frac{\partial\mathcal{L}}{\partial \dot q_k}\right)-\frac{\partial\mathcal{L}}{\partial q_k}=0,
+    \end{equation}
+%
+    onde $q_k$ e $\dot q_k$ formam o $k$-ésimo par de coordenadas generalizadas, cuja substituição resulta nas equações de movimento do sistema. O motivo disso é que esse formalismo facilita a obtenção das equações de movimento quando o sistema envolve múltiplos potenciais e coordenadas acopladas; caso do problema de três corpos.
+
+    Alguns termos importantes para a análise de um \textit{fly-by} são o parâmetro de impacto e o ângulo de deflexão. O parâmetro de impacto $b$ é a distância perpendicular entre a trajetória inicial da sonda — caso ela seguisse em linha reta — e o centro do corpo responsável pela deflexão gravitacional~\cite{berg2023}. No problema restrito de dois corpos, podemos expressá-lo de forma geométrica como~\cite{curtis2014}
+%
+    \begin{equation}~\label{eq:b}
+        b^2 = r_{min}^2 + \frac{2GM r_{min}}{v_\infty^2},
+    \end{equation}
+%
+    onde $r_{min}$ é a distância de maior aproximação e $v_\infty$ é a velocidade da sonda no infinito, ou seja, em uma situação onde ela não estaria sob a influência do campo gravitacional do planeta.
+
+    O ângulo de deflexão indica o quanto a trajetória da sonda se curva devido à interação com o campo gravitacional do planeta~\cite{berg2023}. Ele é definido pelo ângulo entre a direção de entrada e a direção de saída da sonda. Para o modelo restrito de dois corpos, esse ângulo pode ser relacionado à velocidade no infinito e ao parâmetro de impacto~\cite{berg2023,curtis2014}:
+%
+    \begin{equation}\label{eq:deflec_teo}
+        \tan\left(\frac \delta 2\right)=\frac{GM}{bv_{\infty}^2}.
+    \end{equation}
+%
+
+    O objetivo deste trabalho é analisar o \textit{fly-by} simulado pelo modelo restrito de dois corpos, identificando suas limitações, e comparar esses resultados com a simulação baseada no problema restrito de três corpos. A intenção é avaliar até que ponto o modelo de dois corpos pode ser considerado adequado para o ensino de física orbital e de simulação computacional. Além disso, seguindo a orientação do professor, adotamos o método de integração de Euler, conforme apresentado na apostila da disciplina~\cite{apostila}.
+    
+\section{Metodologia}
+    Para a simulação baseada no problema restrito de dois corpos, escrevemos o sistema em coordenadas cartesianas:
+%
+    \begin{equation}
+        \vec r =\begin{pmatrix}
+            x \\ y
+        \end{pmatrix},\quad |\vec r|=\sqrt{x^2+y^2}.
+    \end{equation}
+%
+    Com essa notação, podemos reescrever a Eq.~\ref{eq:f_grav} como
+%
+    \begin{equation}\label{eq:dynamics}
+        \vec F(x, y) = -\frac{GMm}{\left(x^2+y^2\right)^{3/2}}\begin{pmatrix}
+            x \\ y
+        \end{pmatrix}.
+    \end{equation}
+
+    Aplicando a segunda lei de Newton à força gravitacional, obtemos as equações diferenciais de segunda ordem
+%
+    \begin{align}
+        \ddot x =& -\frac{GMx}{(x^2+y^2)^{3/2}}, \\
+        \ddot y =&-\frac{GMy}{(x^2+y^2)^{3/2}},
+    \end{align}
+%
+    que podem ser convertidas em quatro equações de primeira ordem ao definirmos $\dot x = v_x$ e $\dot y = v_y$:
+%
+    \begin{align}
+        \dot x &=v_x, \\
+        \dot v_x &= -\frac{GMx}{(x^2+y^2)^{3/2}},\\
+        \dot y &= v_y, \\
+        \dot v_y &= -\frac{GMy}{(x^2+y^2)^{3/2}}.
+    \end{align}
+%
+    Para realizar a simulação numérica, aplicamos o método de Euler. Assim, cada equação diferencial passa a ser aproximada por
+%
+    \begin{align}
+        x(t+\Delta t)&=x(t)+ v_x(t)\Delta t,\\
+        v_x(t+\Delta t)&=v_x(t)-\frac{GMx(t)}{(x(t)^2+y(t)^2)^{3/2}}\Delta t,\\
+        y(t+\Delta t)&=y(t)+ v_y(t)\Delta t,\\
+        v_y(t+\Delta t)&=v_y(t)-\frac{GMy(t)}{(x(t)^2+y(t)^2)^{3/2}}\Delta t.
+    \end{align}
+%
+
+    Para as condições iniciais, consideramos a sonda vindo de um ``infinito'' negativo e se aproximando da região de influência de Marte. Assim, tomamos $x(0)= -50 R_{Marte}$, onde $R_{Marte}\approx3,3895\times 10^6~m$ é o raio de Marte, enquanto a coordenada inicial em $y$ é definida como $y(0) = b$, sendo $b$ o parâmetro de impacto. 
+    
+    A escolha de $50 R_{Marte}$ busca equilibrar dois efeitos: valores menores reduzem o domínio de integração, mas podem acentuar erros provenientes da aproximação física (a sonda não estaria distante o suficiente para que a velocidade inicial seja realmente assintótica); por outro lado, valores muito maiores diminuem esse erro matemático, mas aumentam a duração da integração e, com isso, o acúmulo de erros numéricos característico do método de Euler. O valor adotado representa um compromisso razoável entre essas duas limitações.
+
+    Tomando a velocidade inicial no eixo $y$ igual a zero, ou seja, $v_y(0)=0$, podemos assumir que a velocidade inicial no eixo $x$ seja aproximadamente a velocidade no infinito $v_\infty$, acrescida do ganho correspondente à conversão da energia potencial gravitacional na posição inicial. Modelamos isso pela conservação de energia do sistema:
+%
+    \begin{equation}\label{eq:velocidade_energy_def}
+        |\vec v(t)|=+\sqrt{v_\infty^2+\frac{2GM}{|\vec r(t)|}},
+    \end{equation}
+%
+    onde adotamos $\vec v_\infty = 2,6~km/s$, valor que produz uma trajetória hiperbólica bem definida neste modelo. Além disso, usamos a aproximação $|\vec r(0)|\simeq|x(0)|$, válida quando escolhemos $b$ pequeno em comparação com $x(0)$; dessa forma, $\vec v(0)$ possui apenas componente em $x$.
+
+    Portanto, as condições iniciais utilizadas no problema são
+%
+    \begin{align}
+        x(0)&=-50R_{Marte},\\
+        y(0)&=b,\\
+        v_x(0)&= +\sqrt{v_\infty^2+\frac{2GM}{|x(0)|}}, \label{eq:pr2c_velocidade}\\
+        v_y(0)&=0.
+    \end{align}
+%
+    Para explorar tanto trajetórias desviadas quanto casos de colisão, adotamos para o parâmetro de impacto o intervalo $b \in[-10R_{Marte};~10R_{Marte}]$. Valores positivos correspondem à sonda iniciando acima do eixo $x$, enquanto valores negativos representam trajetórias iniciadas abaixo do eixo. O intervalo simétrico em $b$ permite verificar se a solução numérica preserva a simetria do problema em torno do eixo $x$.
+
+    Para analisar o \textit{fly-by} no modelo de dois corpos, observamos a distância mínima entre a sonda e Marte, $r_{min}$, obtida de maneira numérica como o menor valor de $|\vec r(t)|$ ao longo da trajetória simulada. Podemos então comparar esse resultado com a previsão teórica, reescrevendo a Eq.~(\ref{eq:b}) na forma
+%
+    \begin{equation}\label{eq:r_min}
+        r_{min}=-\frac{GM}{v_\infty^2}+\sqrt{\left(\frac{GM}{v_\infty^2}\right)^2+b^2}.
+    \end{equation}
+%
+
+    Além disso, avaliamos o erro numérico do método de Euler comparando o módulo da velocidade relativa de entrada no infinito com o módulo da velocidade de saída. Definimos
+%
+    \begin{equation}\label{eq:dif_vel}
+        \Delta v = |\vec v_{rel, out}|-|\vec v_{rel, in}|.
+    \end{equation}
+%
+    Do ponto de vista teórico, como o sistema é conservativo -- Marte está fixa e trabalhamos sempre com velocidades relativas da sonda em relação ao planeta --, as velocidades assintóticas de entrada e saída deveriam ter o mesmo módulo, pois a energia potencial tende a zero no infinito e a energia cinética deve ser preservada. Em outras palavras, espera-se $\Delta v = 0$.
+    
+    Na prática, porém, isso não ocorre devido ao erro numérico acumulado pelo método de Euler. O valor de $|\vec v_{\infty, out}|$ é corrigido a partir da conservação de energia, conforme a Eq.~(\ref{eq:velocidade_energy_def}) para minimizar esse desvio, garantindo que a comparação com a teoria não seja dominada pelo erro energético do método.
+
+    Por fim, o ângulo de deflexão pode ser obtido numericamente por meio do produto interno entre os vetores de velocidade relativa de entrada e de saída da sonda no referencial do planeta:
+%
+    \begin{equation}\label{eq:deflection_simul}
+        \delta=\arccos\left(\frac{\vec v_{in,~rel}\cdot\vec v_{out,~rel}}{|\vec v_{in,~rel}||\vec v_{out,~rel}|}\right).
+    \end{equation}
+%
+    Com esses valores em mãos, comparamos o resultado numérico com a previsão teórica dada pela Eq.~(\ref{eq:deflec_teo}), que pode ser reescrita como
+%
+    \begin{equation}
+        \delta = 2\arctan\left(\frac{GM}{b v_\infty^2}\right).
+    \end{equation}
+%
+
+    Como precisamos determinar $\vec v_{\infty,out}$, é essencial que a sonda já tenha se afastado o suficiente de Marte. Por isso, adotamos como critério de parada da integração o instante em que $|\vec r(t)| > 50R_{Marte}$, seguindo o mesmo valor utilizado para a condição inicial.
+
+    Caso a trajetória indique colisão -- isto é, quando $|\vec r(t)| < R_{Marte}$ --, a simulação é interrompida imediatamente e o valor correspondente de $b$ é registrado como parâmetro de impacto crítico -- ou seja, que gera uma colisão.
+
+    Também incluímos um critério de segurança associado ao tempo de integração, $t_{max}=1\times10^{10}s$. Esse limite, entretanto, não foi atingido em nenhum dos testes realizados.
+
+    Por fim, para reduzir os erros acumulados pelo método de Euler, utilizamos um passo temporal $\Delta t = 0,001s$, registrando saídas de dados aproximadamente a cada  $3~\text{minutos}$ de tempo simulado.
+
+    Partindo para a simulação baseada no problema restrito de três corpos, para formular o problema, utilizamos coordenadas polares, nas quais
+%
+    \begin{equation}
+        \vec r = r \hat e_r + \theta \hat e_\theta,
+    \end{equation}
+%
+    com $\hat e_r = \cos \theta~\hat i + \sin \theta~\hat j$ e $\hat{e}_\theta = -\sin \theta~\hat i +\cos \theta~\hat j $. Com essa base, construímos a Lagrangiana que descreve a interação entre os três corpos, usando a definição da Eq.~(\ref{eq:def_lag}):
+%
+    \begin{equation}
+        \mathcal{L}=\frac{M_M(\dot r_M^2+r_M^2\dot\theta_M^2)}{2}+\frac{m(\dot r_s^2+r_s^2\dot\theta_s^2)}{2} +\frac{GM_\odot M_M}{r_M}+\frac{GM_\odot m}{r_s}+\frac{GM_M m}{\sqrt{r_s^2+r_M^2-2r_sr_M\cos(\theta_s-\theta_M)}}.
+    \end{equation}
+%
+
+    Aplicando a Eq.~(\ref{eq:euler-lag}) à Lagrangiana obtida e realizando algumas manipulações algébricas, chegamos às equações de movimento do sistema:
+%
+    \begin{align}
+    \dot \theta_M&=\sqrt{\frac{GM_\odot}{r_M^3}},\label{eq:mars_ang_pos}\\
+        \dot v_s&=r_s\omega_s^2-\frac{GM_\odot}{r_s^2}-\frac{GM_M[r_s-r_M\cos(\theta_s-\theta_M)]}{[r_s^2+r_M^2-2r_sr_M\cos(\theta_s-\theta_M)]^{3/2}},\\
+        \dot r_s &=v_s,\\
+        \dot \omega_s&=-\frac{GM_Mr_M\sin(\theta_s-\theta_M)}{r_s[r_s^2+r_M^2-2r_sr_M\cos(\theta_s-\theta_M)]^{3/2}}-\frac{2v_s\omega_s}{r_s},\\
+        \dot \theta_s&=\omega_s.
+    \end{align}
+%
+    Aqui, $\theta_M$ representa a posição angular de Marte, assumida em órbita circular com raio constante $r_M\approx2,2794\times10^{11}~m$. As variáveis $(r_s,\theta_s)$ correspondem à posição da sonda, enquanto $(v_s,\omega_s)$ representam sua velocidade radial e angular.
+
+    Aplicando o método de Euler, obtemos as equações de evolução que utilizamos na simulação numérica:
+%
+    \begin{align}
+        \theta_{M}(t+\Delta t)&=\theta_{M}(t)+\sqrt{\frac{GM_\odot}{r_M^3}}~\Delta t, \\
+        r_{s}(t+\Delta t)&=r_{s}(t)+v_{s}(t)~\Delta t, \\
+        v_{s}(t+\Delta t)&=v_{s}(t)+\left\{r_{s}(t)~\omega_{s}(t)^2-\frac{GM_\odot}{r_{s}(t)^2} - \frac{GM_M[r_{s}(t)-r_M\cos(\theta_{s}(t)-\theta_{M}(t))]}{[r_{s}(t)^2+r_M^2-2r_{s}(t)r_M\cos(\theta_{s}(t)-\theta_{M}(t))]^{3/2}} \right\}~\Delta t,\\
+        \theta_{s}(t+\Delta t)&=\theta_{s}(t)+\omega_{s}(t)~\Delta t,\\
+        \omega_{s}(t+\Delta t)&=\omega_{s}(t)+ \left\{ -\frac{GM_Mr_M\sin(\theta_{s}(t)-\theta_{M}(t))}{r_{s}(t)[r_{s}(t)^2+r_M^2-2r_{s}(t)~r_M\cos(\theta_{s}(t)-\theta_{M}(t))]^{3/2}} - \frac{2v_s(t)\omega_s(t)}{r_s(t)} \right\}~\Delta t.
+    \end{align}
+%
+
+    Como as próprias equações diferenciais deixam evidente quando comparadas com o modelo de dois corpos, essa simulação é significativamente mais complexa. Para tornar a comparação entre os dois modelos um pouco mais consistente, definimos o parâmetro de impacto no mesmo intervalo: $b \in[-10R_{Marte};~10R_{Marte}]$.
+
+    Seguindo as sugestões do professor da disciplina, podemos definir o parâmetro de impacto neste problema de duas formas:
+    \begin{enumerate}
+        \item pela distância mínima entre a sonda e Marte ao longo da simulação;
+        \item ou pela distância perpendicular entre a sonda, ao entrar na região de influência de Marte -- definida como a bola de raio $50R_M$ centrada no planeta --, e a trajetória que o planeta percorre naquele instante.
+    \end{enumerate}
+
+    Como não temos como impor o valor desejado da distância mínima no início da simulação -- ela só é conhecida depois que a trajetória completa é calculada --, optamos pela segunda definição. Ela permite determinar diretamente a posição e a velocidade iniciais da sonda a partir da posição e velocidade iniciais de Marte.
+
+    Para Marte, adotamos a condição inicial $\theta_M(0)=-0,01^\circ$, posicionando o planeta próximo ao eixo horizontal, mas com uma pequena margem angular. Apenas como referência, para o raio orbital de Marte, essa escolha implica uma distância inicial até o eixo de aproximadamente $3,98\times 10^7~m$.
+
+    A Eq.~(\ref{eq:mars_ang_pos}) indica que Marte possui apenas velocidade angular -- resultado da aproximação da órbita do planeta por uma órbita circular --, que pode ser convertida para coordenadas cartesianas por
+%
+    \begin{align}
+        v_{M,~x}(t) &= -\sqrt\frac{GM_\odot}{r_M}~\sin[\theta_M(t)], \\
+        v_{M,~y}(t) &= \sqrt\frac{GM_\odot}{r_M}~\cos[\theta_M(t)].
+    \end{align}
+%
+    Também podemos escrever sua posição em coordenadas cartesianas como:
+%
+    \begin{align}
+        x_M(t) &= r_M~\cos[\theta_M(t)], \\
+        y_M(t) &= r_M~\sin[\theta_M(t)].
+    \end{align}
+%
+
+    Com isso, temos definidas as condições iniciais para Marte. Para a sonda, a construção é um pouco mais trabalhosa, mas pode ser resolvida com geometria. A ideia é considerar que Marte possui uma ``circunferência de influência'' de raio $50R_M$, e queremos posicionar a sonda sobre essa circunferência a uma distância perpendicular $b$ da trajetória do planeta -- isto é, da reta paralela à sua velocidade. A Figura~\ref{fig:b_3b_draw} ilustra essa construção.
+
+    \begin{figure}[th]
+        \centering
+        \begin{tikzpicture}
+            \draw[->, thick] (0,-1.2) -- (0,3.4);
+            \node at (-0.3,3.4) {$y$};
+            \draw[->, thick] (-3.1,1.7) -- (3.1,1.7);
+            \node at (3.1, 1.4) {$x$};
+            \fill[black] (0,1.7) circle (0.1cm);
+            \node at (0.4,1.4) {$M$};
+
+            \draw (0,1.7) ++(120:2) arc (120:340:2);
+            \draw[-, thick] (0.0, 1.7) -- (-1.0,3.43);
+            \node at (-0.9, 2.5) {$50R_M$};
+            \draw[->, thick] (-1.7, 0) -- (1.0, 2.7);
+            \node at (1.2, 2.7) {$\bar s_v$};
+
+            \fill[black] (0.68, -0.18) circle (0.05cm);
+            \node at (0.75, -0.38) {$m$};
+
+            \draw[->, thick] (-0.59, 1.11) -- (0.68, -0.18);
+            \node at (-0.15, 0.35) {$b$};
+
+            \draw[->, thick] (0.68, -0.18) -- (1.08, 0.22);
+            \node at (1.0, 0.4) {$\vec v_{s}(0)$};
+        \end{tikzpicture}
+        \caption{Representação das condições iniciais da sonda nos entornos de Marte. A circunferência indica a região que consideramos como domínio de influência do campo gravitacional de Marte, definida por um raio de $50R_M$ centrado no planeta. A partir de Marte, traçamos a reta $\bar s_v$, paralela à velocidade do planeta $\vec v_M$. Sobre essa construção, posicionamos a sonda -- de massa $m$ -- em um ponto da circunferência cuja distância perpendicular até $\bar s_v$ é igual ao parâmetro de impacto $b$. Adotamos a convenção de que $b > 0$ quando a sonda está cima de $\bar s_v$ e $b < 0$ quando está abaixo (no caso do exemplo da figura, $b$ adotaria um valor negativo). A velocidade inicial da sonda, $\vec v_s(0)$, é definida paralela à reta $\bar s_v$.}
+        \label{fig:b_3b_draw}
+    \end{figure}
+
+    A direção da trajetória de Marte é dada pelo vetor unitário de sua velocidade:
+%
+    \begin{equation}
+        \hat u = \frac{\vec v_M}{|\vec v_M|}=\left( -\sin[\theta_M(t)],~\cos[\theta_M(t)] \right),
+    \end{equation}
+%
+    e, rotacionando esse vetor em $90^{\circ}$, obtemos a direção perpendicular:
+%
+    \begin{equation}
+        \hat n = \left(-\cos[\theta_M(t)],~-\sin[\theta_M(t)] \right).
+    \end{equation}
+%
+    Assim, a posição relativa da sonda em relação a Marte pode ser escrita na base $(\hat u,~\hat n)$:
+%
+    \begin{equation}
+        \vec d = \vec r_s - \vec r_M = \alpha \hat u + \beta \hat n,
+    \end{equation}
+%
+    onde $\beta = b$ e $\alpha = -\sqrt{(50R_M)^2-b^2}$, garantindo que a sonda sempre comece ``atrás'' de Marte ao longo da direção do movimento -- de forma semelhante ao que foi imposto no problema de dois corpos.
+
+    A partir dessa construção, a posição inicial da sonda em coordenadas cartesianas é
+%
+    \begin{align}
+        x_s(0) &= x_M(0)+\sqrt{(50R_M)^2-b^2}~\sin[\theta_M(0)] -b~\cos[\theta_M(0)],\\
+        y_s(0) &= y_M(0)-\sqrt{(50R_M)^2-b^2}~\cos[\theta_M(0)]-b~\sin[\theta_M(0)].
+    \end{align}
+%
+    Como a integração numérica é feita em coordenadas polares, convertemos esses valores para $(r_s,\theta_s)$:
+%
+    \begin{align}
+        r_s(0) &= ,\sqrt{[x_s(0)]^2 +[y_s(0)]^2}, \label{eq:polar_r}\\
+        \theta_s(0) &= \mathrm{atan2}[x_s(0),~y_s(0)]\equiv \arg[x_s(0) + i~y_s(0)]\label{eq:polar_theta}.
+    \end{align}
+%
+    Por conveniência, não expandimos essas expressões: os valores são calculados em coordenadas cartesianas e depois convertidos numericamente. Essa construção geométrica das condições iniciais preserva o significado do parâmetro de impacto no limite de fraca influência solar, o que cria um paralelo direto com o caso de dois corpos e facilita a comparação entre os modelos.
+    
+    Definidas a posição e a velocidade iniciais de Marte, bem como a posição inicial da sonda, resta especificar a velocidade inicial da sonda. Começamos pela velocidade relativa em relação a Marte. Seguindo a ideia usada no problema de dois corpos, adotamos uma velocidade de módulo igual a $|\vec v_{rel}|= v_x(0)$ -- em que  $v_x(0)$ é dado pela Eq.~(\ref{eq:pr2c_velocidade}) -- e paralela à trajetória de Marte, isto é, na direção de $\hat u$. Assim,
+%
+    \begin{align}
+        v_{rel,~x}(0) &= -|\vec v_{rel}|~\sin[\theta_M(0)], \\
+        v_{rel,~y}(0) &=|\vec v_{rel}|~\cos[\theta_M(0)].
+    \end{align}
+%
+    Trocando o referencial de Marte para o referencial do Sol, obtemos
+%
+    \begin{align}
+        v_{s,~x}(0) &=-\left(\sqrt{\frac{GM_\odot}{r_M}} + |\vec v_{rel}|\right)~\sin[\theta_M(0)], \\
+        v_{s,~y}(0) &=\left(\sqrt{\frac{GM_\odot}{r_M}} + |\vec v_{rel}|\right)~\cos[\theta_M(0)],
+    \end{align}
+%
+    que podem ser convertidas para o sistema de coordenadas polar utilizando:
+%
+    \begin{align}
+        v_{s,~r}(0) &= \frac{x_s(0)v_{s,~x}(0) + y_s(0)v_{s,~y}(0)}{r_s(0)}, \\
+        v_{s,~\theta}(0) &= \frac{x_s(0)v_{s,~y}(0) - y_s(0)v_{s,~x}(0)}{[r_s(0)]^2}.
+    \end{align}
+%
+
+    As condições de parada da simulação seguem as mesmas adotadas no problema de dois corpos: interrompemos a integração quando a distância relativa entre a sonda e Marte ultrapassa $50 R_M$, saindo do domínio de influência considerado, ou quando ocorre colisão com o planeta. Também mantemos o critério de segurança associado ao tempo máximo de integração, $t_{max}=1\times10^{10}s$. De forma análoga ao caso anterior, utilizamos $\Delta t = 0,001s$, registrando saídas de dados a cada $\sim 3~\text{minutos}$ de tempo simulado.
+
+    Para o modelo restrito de três corpos, não realizamos uma comparação analítica direta; em vez disso, a análise é qualitativa, contrastando o comportamento obtido aqui com o do modelo restrito de dois corpos. Além disso, podemos investigar características internas do sistema, como a variação da velocidade heliocêntrica da sonda:
+%
+    \begin{equation}
+        \Delta v = |\vec v_s(t_{fim})|-|\vec v_s(0)|,
+    \end{equation}
+%
+    expressão semelhante à Eq.~(\ref{eq:dif_vel}), mas sem utilizar a velocidade relativa ao planeta e sem a expectativa teórica de $\Delta v = 0$. No referencial heliocêntrico, a energia da sonda não é necessariamente conservada, pois ela pode ceder energia ao campo gravitacional do Sol ou receber energia dele ao longo do processo. Isso também reflete o fato de que, no referencial solar, a trajetória da sonda é elíptica, enquanto no referencial do planeta a órbita associada ao \textit{fly-by} é hiperbólica.
+
+    Outra quantidade útil é a variação da velocidade relativa entre a sonda e Marte:
+%
+    \begin{equation}
+        \Delta v_{rel}=|\vec v_s(t_{fim})-\vec v_M(t_{fim})|-|\vec v_s(0)-\vec v_M(0)|.
+    \end{equation}
+%
+    Nesse caso, é particularmente interessante verificar se o sistema atende ou não à condição $\Delta v_{rel} = 0$, já que isso indica até que ponto o modelo reproduz ou viola a conservação de energia relativa prevista no problema de dois corpos. Esse diagnóstico também evidencia um ponto importante: embora o \textit{fly-by} sempre altera a direção do movimento relativo, ele não necessariamente modifica o módulo da velocidade relativa.
+
+    Obviamente, a distância mínima entre a sonda e Marte é uma grandeza simples de calcular numericamente, então também a incluímos na análise. Por fim, o ângulo de deflexão pode ser obtido pela Eq.~(\ref{eq:deflection_simul}), sendo interessante verificar se os valores numéricos se aproximam -- ou não -- daqueles esperados a partir do modelo de dois corpos.
+
+    Os códigos desenvolvidos a partir da revisão teórica e da metodologia descrita até então neste trabalho estão disponíveis no GitHub: \url{https://github.com/gabriel-ferr/Fly-by}. No repositório, fornecemos um pequeno guia de execução e a lista das dependências necessárias. A simulação foi implementada em \texttt{C}, enquanto os gráficos foram gerados em \texttt{Julia} usando a biblioteca \texttt{GLMakie}. Os arquivos referentes ao problema restrito de dois corpos possuem o prefixo \texttt{pr2c}, enquanto os referentes ao problema restrito de três corpos utilizam o prefixo \texttt{pr3c}. Também foram colocados no anexo deste trabalho os trechos dos códigos das simulações em \texttt{C} responsáveis pelo cálculo do movimento.
+    
+\section{Resultados}
+    A seguir, apresentamos os resultados das simulações realizadas e as comparações entre os modelos propostos. Foram executados 240 testes ao longo do intervalo definido para o parâmetro de impacto, a partir dos quais analisamos os dados globais obtidos. Antes disso, porém, vale fazer uma observação rápida sobre as trajetórias calculadas -- um aspecto visual interessante da simulação do \textit{fly-by} e que ajuda a contextualizar o comportamento dinâmico observado.
+
+    \begin{figure}[!t]
+        \centering
+        \includegraphics[width=0.9\linewidth]{figure_1.png}
+        \caption{Exemplos de trajetórias da sonda (em azul) sob influência gravitacional de Marte, cujo centro de massa esta indicado pelo ponto vermelho. O planeta não está representado em escala; o marcador vermelho apenas serve como referência de posição. Cada painel mostra a curva descrita pela sonda para diferentes valores de parâmetro de impacto.}
+        \label{fig:traje_2c}
+    \end{figure}
+
+    A Figura~\ref{fig:traje_2c} mostra as trajetórias da sonda em sua interação com Marte no modelo restrito de dois corpos. Os painéis \textbf{(a)}, \textbf{(b) e \textbf{(c)}} correspondem a casos em que a sonda inicia abaixo do eixo horizontal, enquanto os painéis \textbf{(d)}, \textbf{(e)} e \textbf{(f)} mostram situações em que ela começa acima do eixo.
+
+    Os painéis \textbf{(c)} e \textbf{(d)} ilustram cenários de colisão com o planeta. Neles, observamos pequenos ``saltos'' no final da trajetória, comportamento esperado devido ao uso do método de Euler com passo de tempo fixo e à natureza ``dura'' do sistema quando a sonda se aproxima muito do corpo massivo -- região em que o campo gravitacional varia rapidamente e tende a amplificar erros numéricos.
+
+    \begin{figure}[!t]
+        \centering
+        \includegraphics[width=0.9\linewidth]{figure_2.png}
+        \caption{Exemplos de trajetórias de sonda (em azul) e de Marte (em vermelho) no modelo restrito de três corpos. As curvas representam o movimento dos centros de massa de cada corpo ao longo da interação. Cada painel mostra a deformação da trajetória da sonda para diferentes valores do parâmetro de impacto. O gráfico está em unidades astronômicas, sendo $1~U.A.~\simeq~1,496\times 10^{11}~m$.}
+        \label{fig:traje_3c}
+    \end{figure}
+
+    De maneira semelhante, a Figura~\ref{fig:traje_3c} apresenta as trajetórias obtidas para a simulação com o modelo restrito de três corpos. Nos painéis \textbf{(a)}, \textbf{(b)}, e \textbf{(c)}, a sonda inicia à direita de Marte, o que é indicado pelos valores negativos do parâmetro de impacto -- isto é, a sua posição inicial está abaixo da linha paralela ao vetor velocidade de Marte, como mostrado na Figura~\ref{fig:b_3b_draw}. De forma semelhante, os painéis \textbf{(d)}, \textbf{(e)} e \textbf{(f)} correspondem a casos em que a sonda começa à esquerda do planeta, o que equivale a estar acima dessa linha imaginária no instante inicial. Temos ainda que, como na Figura~\ref{fig:traje_2c}, os painéis \textbf{(c)} e \textbf{(d)} também representam situações de colisão da sonda com o planeta.
+
+    Observa-se que a dinâmica torna-se mais complexa devido ao movimento mútuo dos corpos em suas órbitas elípticas; a trajetória relativa deixa de ser puramente estática, como no problema de dois corpos. Ainda assim, ao analisarmos a trajetória da sonda no referencial de Marte, percebe-se que sua curva se aproxima bastante de uma hipérbole -- exatamente o comportamento esperado para uma manobra de \textit{fly-by}.
+
+    Para facilitar a comparação entre os dois modelos, analisaremos agora os dados globais obtidos, buscando identificar em quais situações o modelo de dois corpos é adequado e onde ele deixa de representar bem o fenômeno quando comparamos com o modelo de três corpos para as condições iniciais definidas. quais aspectos físicos do \textit{fly-by} podem ser ensinados de forma confiável utilizando o modelo simplificado de dois corpos no contexto de simulação em física.
+
+    A Figura~\ref{fig:distance} mostra a distância mínima registrada entre a sonda e Marte para cada valor de parâmetro de impacto testado. A primeira coisa que chama atenção é o excelente acordo entre os valores simulados e a curva teórica prevista pela Eq.~(\ref{eq:r_min}) para as trajetórias sem colisão. Esse comportamento aparece de forma clara tanto no modelo de dois corpos quanto no de três corpos, indicando que a geometria básica do \textit{fly-by} é bem capturada pelos dois modelos nessas regiões.
+
+    Para valores grandes de $b$, observa-se uma pequena divergência entre a curva teórica e os resultados numéricos. Isso ocorre porque a expressão analítica para $r_{min}$ assume uma velocidade assintótica exatamente igual a $v_\infty = 2,6~km/s$. Como a simulação considera uma ``esfera de influência'' finita de $50R_M$, a velocidade inicial não é perfeitamente assintótica, e esse efeito se torna mais perceptível quando a sonda passa mais distante do planeta. Uma esfera de influência maior reduziria essa diferença.
+
+    Outro ponto interessante é o intervalo de valores de $b$ que leva à colisão com Marte. Ambos os modelos apresentam faixas muito semelhantes de colisão, como esperado, já que as condições inicias foram construídas justamente para manter essa correspondência. Nessas regiões, as distâncias mínimas registradas não coincidem com os valores teóricos porque a simulação é interrompida assim que a colisão é detectada.
+
+    Por fim, nota-se um leve ``serrilhado'' nos pontos próximos à colisão. Esse efeito é consequência do método de Euler: quando a sonda se aproxima muito do planeta, o campo gravitacional fica mais forte e o passo de tempo fixo faz com que a integração dê ``saltos'' maiores. Esse comportamento já havia aparecido visualmente nas trajetórias mostradas nos painéis \textbf{(c)} e \textbf{(d)} das Figuras~\ref{fig:traje_2c} e~\ref{fig:traje_3c}.
+
+    \begin{figure}[!h]
+        \centering
+        \includegraphics[width=0.8\linewidth]{figure_3.png}
+        \caption{Distância mínima entre a sonda e Marte em função do parâmetro de impacto. A figura mostra os valores obtidos numericamente tanto para o modelo restrito de dois corpos quanto para o de três corpos, destacando casos com e sem colisão. A curva teórica esperada, dada pela Eq.~(\ref{eq:r_min}), também é apresentada para referência, assim como a linha que representa o raio do planeta.}
+        \label{fig:distance}
+    \end{figure}
+
+    Partindo para a análise do ângulo de deflexão, observamos na Figura~\ref{fig:deflection} que os valores obtidos nas simulações dos dois modelos concordam entre si e acompanham muito bem a curva teórica prevista pela Eq.~(\ref{eq:deflec_teo}). Esse resultado reforça que, fora das regiões de colisão, a dinâmica relativa entre sonda e planeta é capturada de forma bastante consistente pelos dois modelos.
+
+    Nas situações em que ocorre colisão, porém, ambas as simulações deixam de seguir a tendência teórica e ``colapsam'' para valores menores de deflexão. Isso acontece porque a integração é interrompida no momento em que a colisão é identificada. Como o ângulo de deflexão depende diretamente da comparação entre as direções das velocidades relativas de entrada e de saída, a ausência dessa fase final -- onde a trajetória deveria curvar-se de acordo com a teoria -- impede que o valor correto seja registrado. O comportamento observado nesses pontos, portanto, é uma consequência direta do critério de parada adotado.
+
+    Mesmo assim é interessante notar que o modelo de dois corpos e o modelo de três corpos apresentam praticamente o mesmo padrão para $\delta$, inclusive nas proximidades da região crítica. Isso indica que a influência solar, para as condições iniciais definidas, não altera de forma significativa o resultado da medida do ângulo de deflexão.
+
+    \begin{figure}[!h]
+        \centering
+        \includegraphics[width=0.8\linewidth]{figure_4.png}
+        \caption{Ângulo de deflexão da trajetória da sonda em função do parâmetro de impacto. O ângulo é calculado a partir da direção de entrada ($\vec v_{in,~rel}$) e da direção de saída ($\vec v_{out,~rel}$) no referencial de Marte. A figura apresenta os valores simulados para os modelos restritos de dois e três corpos, destacando casos com e sem colisão, juntamente com o valor teórico esperado obtido pela expressão analítica do problema de dois corpos.}
+        \label{fig:deflection}
+    \end{figure}
+
+    Seguimos agora para as medidas em que o modelo de dois corpos entre em conflito com a realidade física: a variação da velocidade. No modelo restrito de dois corpos, a sonda descreve uma órbita hiperbólica em um sistema efetivamente ``fechado'', de modo que a energia mecânica total é conservada. Isso implica que não deve haver mudança no módulo da velocidade relativa no infinito, isto é, $\Delta v= 0$ segundo a Eq.~(\ref{eq:dif_vel}). Já no modelo de três corpos essa condição não se aplica: a sonda se move inicialmente em uma órbita elíptica em torno do Sol, e a perturbação gravitacional do planeta quebra a conservação da energia cinética heliocêntrica, permitindo $\Delta v \neq 0$.
+
+    A Figura~\ref{fig:var_velo} ilustra esse comportamento. O painel \textbf{(a)} apresenta a variação do módulo da velocidade relativa entre entrada e saída, expressa como erro percentual em relação ao valor inicial -- $|\vec v_\infty|$ para o problema de dois corpos e $|\vec v_s(0)|$ para o de três corpos. O painel \textbf{(b)} mostra o tempo total de integração até o acionamento de algum critério de parada.
+
+    No painel \textbf{(a)}, vemos que o erro no modelo de dois corpos é extremamente baixo (menos que $0,1\%$) e tende a zero conforme diminuímos o parâmetro de impacto. Isso ocorre porque trajetórias com $b$ menor resultam em tempos de integração menores, reduzindo o erro acumulado pelo método de Euler; assim, o modelo acaba atendendo bem a condição teórica de $\Delta v = 0$.
+
+    Para o modelo de três corpos, representado pelos quadrados pretos, o comportamento é diferente. O erro não diminui consideravelmente com o tempo de integração e permanece em torno de $\sim0,2\%$, exibindo ainda um serrilhado semelhante ao observado nas situações de colisão anteriormente. Esse resultado era esperado: como o sistema heliocêntrico não conserva energia cinética, o módulo da velocidade relativa naturalmente pode variar, produzindo o deslocamento observado na figura. Essa variação é pequena porque as condições iniciais foram escolhidas justamente para que a manobra no modelo de três corpos se assemelhasse ao máximo ao caso de dois corpos, como proposto no trabalho. Além disso, como as velocidades iniciais e finais utilizadas no cálculo não são verdadeiramente assintóticas no modelo de três corpos, isso também contribui para o erro registrado. Destra forma, fica perceptível que a velocidade da sonda relativa ao planeta praticamente não muda de maneira significativa em módulo durante o \textit{fly-by}, o que era esperado devido a órbita hiperbólica da sonda neste referencial.
+
+    Por fim, vale destacar que o serrilhado observado nos dados do modelo de três corpos é consequência do método de Euler: ao lidar com regiões em que o campo gravitacional varia rapidamente, o passo de tempo fixo introduz instabilidade numérica que aparecem como oscilações nos valores de velocidade.
+
+    \begin{figure}[!h]
+        \centering
+        \includegraphics[width=0.96\linewidth]{figure_5.png}
+        \caption{No painel \textbf{(a)} é apresentado o erro relativo no módulo da velocidade da sonda, definido como a variação de sua velocidade dividida pela velocidade inicial No painel \textbf{(b)} mostramos o tempo total necessário para a integração dos modelos ao longo de cada trajetória. Os casos com colisão no modelo de três corpos foram omitidos, pois apresentaram erros superiores a $100\%$, decorrentes da interrupção prematura da simulação e do uso do método de Euler.}
+        \label{fig:var_velo}
+    \end{figure}
+
+    Por fim, como a velocidade da sonda não é conservada no \textit{fly-by} descrito pelo problema restrito de três corpos, analisamos a variação de sua velocidade heliocêntrica. A Figura~\ref{fig:velo_helio} confirma esse comportamento: para todas as trajetórias $\Delta v\neq 0$, evidenciando a influência do campo gravitacional solar durante a passagem.
+
+    Os pontos correspondentes às simulações com colisão aparecem deslocados, o que era esperado, já que essas integrações foram interrompidas antes que a trajetória pudesse se estabelecer por completo. Para as trajetórias sem colisão, no entanto, observamos uma curva bem definida: o módulo da variação da velocidade aumenta à medida que o parâmetro de impacto diminui. Isso ocorre porque impactos menores correspondem a aproximações mais intensas entre sonda e planeta, fazendo com que a interação gravitacional de Marte perturbe de forma mais significativa a órbita elíptica heliocêntrica da sonda. Essa perturbação altera a relação entre energia cinética e momento angular no referencial do Sol, resultando em uma variação maior de velocidade.
+
+    Da mesma forma, trajetórias com grandes valores de $b$ passam longe do planeta e experimentam uma perturbação mais fraca. Nesses casos, a velocidade heliocêntrica praticamente não muda -- o efeito dominante é apenas a mudança de direção, já discutida na análise do ângulo de deflexão.
+
+    \begin{figure}[!t]
+        \centering
+        \includegraphics[width=0.8\linewidth]{figure_6.png}
+        \caption{Variação da velocidade heliocêntrica da sonda em função do parâmetro de impacto para o modelo restrito de três corpos. Os quadrados pretos representam trajetórias sem colisão, enquanto os quadrados vermelhos correspondem aos casos em que a sonda colide com Marte.}
+        \label{fig:velo_helio}
+    \end{figure}
+\section{Conclusão}
+    Podemos concluir que a simulação de \textit{fly-by} baseada no modelo restrito de dois corpos, embora não reproduza toda a complexidade física do modelo de três corpos, ainda é capaz de fornecer resultados bastante satisfatórios para a distância mínima e para o ângulo de deflexão. Além disso, quando utilizamos condições iniciais compatíveis entre os dois modelos, a diferença do erro relativa na velocidade se mantém pequeno -- da ordem de $\sim0,15\%$ -- reforçando que o comportamento global das trajetórias permanece semelhante.
+
+    Dessa forma, a menos que seja necessário analisar explicitamente a variação da velocidade heliocêntrica, ou as trajetórias em si, o modelo de dois corpos se mostra perfeitamente viável para o ensino de simulação em física. Ele é simples, possui solução geométrica analítica para comparação e permite explorar conceitos centrais do \textit{fly-by}, como parâmetro de impacto, distância mínima e ângulo de deflexão, sem comprometer de maneira significativa a fidelidade física. Além disso, o modelo facilita a visualização e discussão de erros numéricos, já que a violação da conservação da velocidade relativa aparece de modo controlado e interpretável.
+
+    Por outro lado, o modelo de três corpos se mostrou muito mais sensível ao método de integração de Euler. A presença do Sol introduz instabilidades que, combinadas com o aumento artificial de energia típico do método, produzem o serrilhado observado em diferentes resultados. Em algumas situações, torna-se difícil distinguir se a variação na velocidade heliocêntrica é de origem física ou numérica, como destacado na análise da Figura~\ref{fig:var_velo}. Isso limita a utilidade didática do modelo quando associado a um integrador básico.
+
+    Em vista disso, o problema restrito de três corpos não parece ideal para introdução ao ensino de simulação numérica, dada sua complexidade intrínseca e sua sensibilidade a integradores simples. Uma abordagem mais adequada seria utilizá-lo apenas em disciplinas avançadas, associando-o a métodos mais robustos -- como os integradores de Verlet ou, de preferência, os de Runge-Kutta -- enquanto o modelo de dois corpos cumpre muito bem o papel de introduzir os principais conceitos associados ao \textit{fly-by} de forma estável e pedagogicamente acessível.
+%% --------------------------------------------------------------------------
+\printbibliography
+%% --------------------------------------------------------------------------
+\newpage
+\section{Anexos}
+\subsection{Códigos de simulação}
+    Neste anexo apresentamos os trechos de código responsáveis pelas rotinas centrais das simulações numéricas. Vale destacar que eles não representam o projeto completo, mas apenas as partes essenciais para a integração das equações de movimento. O conjunto completo de arquivos, junto com instruções de uso e dependências, está disponível em: \url{https://github.com/gabriel-ferr/Fly-by}. Os comentários foram parcialmente removidos do código para reduzir o volume de texto.
+
+    \subsubsection{Problema restrito de dois corpos}
+    \begin{lstlisting}[caption={Rotina principal do integrador para o problema de dois corpos.}]
+//  const int test                          - Numero de identificacao do teste.
+//  const double b                          - Parametro de impacto.
+//  double* d_min_value                     - Referencia: altera a distancia minima encontrada entre a sonda e Marte.
+//  double* delta_v_value                   - Referencia: altera a variacao de velocidade entre a sonda e Marte na entrada e saida.
+//  double* deflection_angle_value          - Referencia: altera o angulo de deflexao encontrado.
+//  int* collision                          - Referencia: altera o indicador de colisao.
+//  double* time_end                        - Referencia: altera o tempo em segundo que levou para finalizar a simulacao.
+void simulate(const int test, const double b, double* d_min_value, double* delta_v_value, double* deflection_angle_value, int* collision, double* time_end) {
+    //          - Declaracao das variaveis locais.
+    int f;
+
+    //      Variaveis de estado.
+    double r[N_DIMS + 1];
+    double v[N_DIMS + 1];
+    
+    //      Variaveis de estado temp.
+    double r_temp[N_DIMS + 1];
+    double v_temp[N_DIMS + 1]; 
+
+    //      Vetores de velocidade de entrada e saida.
+    double velocity_in[N_DIMS + 1];
+    double velocity_out[N_DIMS + 1];
+    double velocity_out_direction[N_DIMS + 1];
+
+    double div;
+    double time;
+    double distance;
+    char filename[200];
+    FILE *fo;
+
+    //          - Cond. iniciais, aplicadas...
+    r[1] = x_init;
+    r[2] = b;
+    v[1] = v_x_init;
+    v[2] = 0.0;
+
+    velocity_in[1] = v_infinite_in;
+    velocity_in[2] = 0.0;
+
+    distance = sqrt(r[1] * r[1] + r[2] * r[2]);
+
+    *collision = 0;
+    *d_min_value = distance;
+
+    //          - Prepara para salvar os dados.
+    f = 0;
+    sprintf(filename, "%s/pr2c/data_%03d.csv", test_name, test + 1);
+    fo = fopen(filename, "w");
+
+    fprintf(fo, "t,x,y,v_x,v_y,d\n");
+
+    //          - Processo de simul.
+    for (time = 0; time < max_int_time; time += dt) { // NOLINT(*-flp30-c)
+    
+        //          Adiciona os dados ao arquivo de saida.
+        if (f <= 0) {
+            f = steps_to_output;
+            fprintf(fo, "%.8e,%.12e,%.12e,%.12e,%.12e,%.12e\n",
+                time, r[1], r[2], v[1], v[2], distance);
+
+            //      Parada.
+            //  1. Verifica se a sonda colidiu com Marte.
+            if (distance < RAIO_MARTE) {
+                *d_min_value = distance;
+                *collision = 1;
+                break;
+            }
+
+            //  2. Verifica se a sonda esta suficientemente longe de Marte.
+            //  O tempo aqui e apenas para impedir que ele pare no comeco da simul.
+            if (distance >= stop_value && time > 10 * STEPS_PARA_OUTPUT) {
+                break;
+            }
+        }
+
+        f--;
+        //          Integracao, conforme Eqs (14-17).
+        div = r[1] * r[1] + r[2] * r[2];
+        r_temp[1] = r[1] + v[1] * dt;
+        r_temp[2] = r[2] + v[2] * dt;
+        v_temp[1] = v[1] - (CONSTANTE_GRAVITACIONAL * MASSA_MARTE * r[1] / (div * sqrt(div))) * dt;
+        v_temp[2] = v[2] - (CONSTANTE_GRAVITACIONAL * MASSA_MARTE * r[2] / (div * sqrt(div))) * dt;
+
+        //          Atualiza os estados.
+        r[1] = r_temp[1];
+        r[2] = r_temp[2];
+        v[1] = v_temp[1];
+        v[2] = v_temp[2];
+        
+        //          Calcula a dist. entre Marte e a sonda.
+        distance = sqrt(div);
+        if (distance < *d_min_value) *d_min_value = distance;
+    }
+
+    //          - Fecha o arquivo de dados.
+    fclose(fo);
+
+    //          - Calcula o angulo de deflexao e a variacao da velocidade relativa.
+    div = sqrt(v[1] * v[1] + v[2] * v[2]);
+    velocity_out_direction[1] = v[1] / div;
+    velocity_out_direction[2] = v[2] / div;
+
+    div = sqrt(div * div - 2 * CONSTANTE_GRAVITACIONAL * MASSA_MARTE / sqrt(r[1] * r[1] + r[2] * r[2]));
+    
+    velocity_out[1] = div * velocity_out_direction[1];
+    velocity_out[2] = div * velocity_out_direction[2];
+
+    *delta_v_value = sqrt(velocity_out[1] * velocity_out[1] + velocity_out[2] * velocity_out[2]) - sqrt(velocity_in[1] * velocity_in[1] + velocity_in[2] * velocity_in[2]);
+
+    *deflection_angle_value = (velocity_in[1] * velocity_out[1] + velocity_in[2] * velocity_out[2]) /
+        (sqrt(velocity_in[1] * velocity_in[1] + velocity_in[2] * velocity_in[2]) *
+            sqrt(velocity_out[1] * velocity_out[1] + velocity_out[2] * velocity_out[2]));
+
+    if (*deflection_angle_value > 1) *deflection_angle_value = 1.0;
+    if (*deflection_angle_value < -1) *deflection_angle_value = -1.0;
+
+    *deflection_angle_value = acos(*deflection_angle_value);
+    *time_end = time;
+}
+    \end{lstlisting}
+
+    \subsubsection{Problema restrito de três corpos}
+    \begin{lstlisting}[caption={Rotina principal do integrador para o problema de três corpos.}]
+//  const int test                          - N. de identificacao do teste.
+//  const double b                          - Parametro de impacto.
+//  double* d_min_value                     - Referencia: altera a dist. min. encontrada entre a sonda e Marte.
+//  double* delta_v_value                   - Referencia: altera a var. de velocidade helio. da sonda.
+//  double* delta_v_value_rel               - Referencia: altera a var. de velocidade relativa da sonda.
+//  double* deflection_angle_value          - Referencia: altera o angulo de deflexao encontrado.
+//  int* collision                          - Referencia: altera o indicador de colisao.
+//  double* time_end                        - Referencia: altera o tempo em segundo que levou para finalizar a simul.
+void simulate(int test, double b, double* d_min_value, double* delta_v_value, double* delta_v_value_rel, double* deflection_angle_value, int* collision, double* time_end) {
+
+    //          - Vars. local.
+    int f; 
+
+    //      Estado (coordenadas polares)
+    double mars_coord_polar[N_DIMS + 1];
+    double mars_velocity_polar[N_DIMS + 1];
+    double ship_coord_polar[N_DIMS + 1];
+    double ship_velocity_polar[N_DIMS + 1];
+
+    //      Estado (coordenadas cartesianas)
+    double mars_coord_cartesian[N_DIMS + 1];
+    double mars_velocity_cartesian[N_DIMS + 1];
+    double ship_coord_cartesian[N_DIMS + 1];
+    double ship_velocity_cartesian[N_DIMS + 1];
+
+    //      Estado (temp)
+    double mars_coord_polar_updated[N_DIMS + 1];
+    double ship_coord_polar_updated[N_DIMS + 1];
+    double ship_velocity_polar_updated[N_DIMS + 1];
+
+    //      Vetores de velocidade.
+    double velocity_in[N_DIMS + 1];
+    double velocity_out[N_DIMS + 1];
+    double velocity_in_rel[N_DIMS + 1];
+    double velocity_out_rel[N_DIMS + 1];
+    double velocity_out_direction[N_DIMS + 1];
+
+    double div; 
+    double time;
+    double distance;
+    char filename[200];
+    FILE *fo;
+
+    //          - Cond. iniciais...
+    mars_coord_polar[1] = DISTANCIA_MARTE_SOL;
+    mars_coord_polar[2] = mars_angle_init;
+    mars_velocity_polar[1] = 0.0;
+    mars_velocity_polar[2] = sqrt(CONSTANTE_GRAVITACIONAL * MASSA_SOL / (DISTANCIA_MARTE_SOL * DISTANCIA_MARTE_SOL * DISTANCIA_MARTE_SOL));
+
+    //  2. Converte as coordenadas de marte para os valores cartesianos.
+    mars_coord_cartesian[1] = mars_coord_polar[1] * cos(mars_coord_polar[2]);
+    mars_coord_cartesian[2] = mars_coord_polar[1] * sin(mars_coord_polar[2]);
+    mars_velocity_cartesian[1] = - mars_coord_polar[1] * mars_velocity_polar[2] * sin(mars_coord_polar[2]);
+    mars_velocity_cartesian[2] = mars_coord_polar[1] * mars_velocity_polar[2] * cos(mars_coord_polar[2]);
+
+    //  3. Calcula a pos. cartesiana inicial da sonda.
+    ship_coord_cartesian[1] = mars_coord_cartesian[1] + sqrt(r_factor * r_factor - b * b) * sin(mars_coord_polar[2]) - b * cos(mars_coord_polar[2]);
+    ship_coord_cartesian[2] = mars_coord_cartesian[2] - sqrt(r_factor * r_factor - b * b) * cos(mars_coord_polar[2]) - b * sin(mars_coord_polar[2]);
+
+    //  4. Converte os valores de pos. para coordendas polares.
+    ship_coord_polar[1] = sqrt(ship_coord_cartesian[1] * ship_coord_cartesian[1] + ship_coord_cartesian[2] * ship_coord_cartesian[2]);
+    ship_coord_polar[2] = atan2(ship_coord_cartesian[2], ship_coord_cartesian[1]);
+
+    //  5. Calcula a velocidade relativa de entrada; e aproveita para calcular o valor da velocidade helo..
+    velocity_in_rel[1] = - v_sonda_init * sin(mars_coord_polar[2]);
+    velocity_in_rel[2] = v_sonda_init * cos(mars_coord_polar[2]);
+
+    ship_velocity_cartesian[1] = velocity_in_rel[1] + mars_velocity_cartesian[1];
+    ship_velocity_cartesian[2] = velocity_in_rel[2] + mars_velocity_cartesian[2];
+
+    velocity_in[1] = ship_velocity_cartesian[1];
+    velocity_in[2] = ship_velocity_cartesian[2];
+
+    //  6. Converte as velocidades cartesianas para polar.
+    ship_velocity_polar[1] = (ship_coord_cartesian[1] * ship_velocity_cartesian[1] + ship_coord_cartesian[2] * ship_velocity_cartesian[2]) / ship_coord_polar[1];
+    ship_velocity_polar[2] = (ship_coord_cartesian[1] * ship_velocity_cartesian[2] - ship_coord_cartesian[1] * ship_velocity_cartesian[1]) / (ship_coord_polar[1] * ship_coord_polar[1]);
+
+    //  7. Dist. entre a sonda e Marte.
+    distance = sqrt((ship_coord_cartesian[1] - mars_coord_cartesian[1]) * (ship_coord_cartesian[1] - mars_coord_cartesian[1]) + (ship_coord_cartesian[2] - mars_coord_cartesian[2]) * (ship_coord_cartesian[2] - mars_coord_cartesian[2]));
+
+    *collision = 0;
+    *d_min_value = distance;
+    //          Prepara para salvar os dados.
+    f = 0;
+    sprintf(filename, "%s/pr3c/data_%03d.csv", test_name, test + 1);
+    fo = fopen(filename, "w");
+
+    fprintf(fo, "t,x_mars,y_mars,x_ship,y_ship,v_x_mars,v_y_mars,v_x_ship,v_y_ship,d\n");
+    
+    //          - Processo de simul.
+    for (time = 0; time < max_int_time; time += dt) { // NOLINT(*-flp30-c)
+        //          Adiciona os dados ao arquivo de saida.
+        if (f <= 0) {
+            f = steps_to_output;
+            fprintf(fo, "%.8e,%.15e,%.15e,%.15e,%.15e,%.15e,%.15e,%.15e,%.15e,%.15e\n",
+                time, mars_coord_cartesian[1], mars_coord_cartesian[2], ship_coord_cartesian[1], ship_coord_cartesian[2], mars_velocity_cartesian[1], mars_velocity_cartesian[2], ship_velocity_cartesian[1], ship_velocity_cartesian[2], distance);
+
+            //      Parada.
+            //  1. Verifica se a sonda colidiu com Marte.
+            if (distance < RAIO_MARTE) {
+                *d_min_value = distance;
+                *collision = 1;
+                break;
+            }
+
+            //  2. Verifica se a sonda esta suficientemente longe de Marte.
+            //  O tempo aqui e apenas para impedir que ele pare no comeco da simul.
+            if (distance >= stop_value && time > 10 * STEPS_PARA_OUTPUT) {
+                break;
+            }
+        }
+
+        f--;
+
+        //          Integracao, conforme Eqs (34-38).
+        div = ship_coord_polar[1] * ship_coord_polar[1] + mars_coord_polar[1] * mars_coord_polar[1] - 2 * ship_coord_polar[1] * mars_coord_polar[1] * cos(ship_coord_polar[2] - mars_coord_polar[2]);
+
+        mars_coord_polar_updated[2] = mars_coord_polar[2] + mars_velocity_polar[2] * dt;
+        ship_coord_polar_updated[1] = ship_coord_polar[1] + ship_velocity_polar[1] * dt;
+        ship_coord_polar_updated[2] = ship_coord_polar[2] + ship_velocity_polar[2] * dt;
+        ship_velocity_polar_updated[1] = ship_velocity_polar[1] + (ship_coord_polar[1] * ship_velocity_polar[2] * ship_velocity_polar[2] -
+            CONSTANTE_GRAVITACIONAL * MASSA_SOL / (ship_coord_polar[1] * ship_coord_polar[1]) -
+            CONSTANTE_GRAVITACIONAL * MASSA_MARTE * (ship_coord_polar[1] - mars_coord_polar[1] * cos(ship_coord_polar[2] - mars_coord_polar[2])) /
+            (div * sqrt(div))) * dt;
+        ship_velocity_polar_updated[2] = ship_velocity_polar[2] +
+            (- CONSTANTE_GRAVITACIONAL * MASSA_MARTE * mars_coord_polar[1] * sin(ship_coord_polar[2] - mars_coord_polar[2]) /
+                (ship_coord_polar[1] * div * sqrt(div)) - 2 * ship_velocity_polar[1] * ship_velocity_polar[2] / ship_coord_polar[1]) * dt;
+
+        //          Atualiza os estados
+        mars_coord_polar[2] = mars_coord_polar_updated[2];
+        ship_coord_polar[1] = ship_coord_polar_updated[1];
+        ship_coord_polar[2] = ship_coord_polar_updated[2];
+        ship_velocity_polar[1] = ship_velocity_polar_updated[1];
+        ship_velocity_polar[2] = ship_velocity_polar_updated[2];
+
+        mars_coord_cartesian[1] = mars_coord_polar[1] * cos(mars_coord_polar[2]);
+        mars_coord_cartesian[2] = mars_coord_polar[1] * sin(mars_coord_polar[2]);
+        
+        ship_coord_cartesian[1] = ship_coord_polar[1] * cos(ship_coord_polar[2]);
+        ship_coord_cartesian[2] = ship_coord_polar[1] * sin(ship_coord_polar[2]);
+
+        mars_velocity_cartesian[1] = mars_velocity_polar[1] * cos(mars_coord_polar[2]) - mars_coord_polar[1] * mars_velocity_polar[2] * sin(mars_coord_polar[2]);
+        mars_velocity_cartesian[2] = mars_velocity_polar[1] * sin(mars_coord_polar[2]) + mars_coord_polar[1] * mars_velocity_polar[2] * cos(mars_coord_polar[2]);
+
+        ship_velocity_cartesian[1] = ship_velocity_polar[1] * cos(ship_coord_polar[2]) - ship_coord_polar[1] * ship_velocity_polar[2] * sin(ship_coord_polar[2]);
+        ship_velocity_cartesian[2] = ship_velocity_polar[1] * sin(ship_coord_polar[2]) + ship_coord_polar[1] * ship_velocity_polar[2] * cos(ship_coord_polar[2]);
+
+        //          Dist. entre Marte e a sonda.
+        distance = sqrt(div);
+        if (distance < *d_min_value) *d_min_value = distance;
+    }
+    //          Fecha o arquivo de dados.
+    fclose(fo);
+
+    //          Angulo de deflexao e a var. da velocidade.
+    velocity_out[1] = ship_velocity_cartesian[1];
+    velocity_out[2] = ship_velocity_cartesian[2];
+
+    *delta_v_value = sqrt(velocity_out[1] * velocity_out[1] + velocity_out[2] * velocity_out[2]) - sqrt(velocity_in[1] * velocity_in[1] + velocity_in[2] * velocity_in[2]);
+
+    velocity_out_rel[1] = ship_velocity_cartesian[1] - mars_velocity_cartesian[1];
+    velocity_out_rel[2] = ship_velocity_cartesian[2] - mars_velocity_cartesian[2];
+
+    *delta_v_value_rel = sqrt(velocity_out_rel[1] * velocity_out_rel[1] + velocity_out_rel[2] * velocity_out_rel[2]) - sqrt(velocity_in_rel[1] * velocity_in_rel[1] + velocity_in_rel[2] * velocity_in_rel[2]);
+
+    div = sqrt(velocity_out_rel[1] * velocity_out_rel[1] + velocity_out_rel[2] * velocity_out_rel[2]);
+    velocity_out_direction[1] = velocity_out[1] / div;
+    velocity_out_direction[2] = velocity_out[2] / div;
+
+    *deflection_angle_value = (velocity_in_rel[1] * velocity_out_rel[1] + velocity_in_rel[2] * velocity_out_rel[2]) /
+        (sqrt(velocity_in_rel[1] * velocity_in_rel[1] + velocity_in_rel[2] * velocity_in_rel[2]) *
+            sqrt(velocity_out_rel[1] * velocity_out_rel[1] + velocity_out_rel[2] * velocity_out_rel[2]));
+
+    if (*deflection_angle_value > 1) *deflection_angle_value = 1.0;
+    if (*deflection_angle_value < -1) *deflection_angle_value = -1.0;
+
+    *deflection_angle_value = acos(*deflection_angle_value);
+    *time_end = time;
+}
+    \end{lstlisting}
+%% --------------------------------------------------------------------------
+\end{document}
+%% --------------------------------------------------------------------------
